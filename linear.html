@@ -1,0 +1,101 @@
+<html>
+  <head>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.0.0/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-vis"></script>
+    <script>
+      function plot (points, featureName) {
+        tfvis.render.scatterplot(
+          {name: `${featureName} vs House Price`},
+          {values: [points], series: ['original']},
+          {
+            xLabel: featureName,
+            yLabel: 'Price',
+          }
+        );
+      }
+
+      // min-max normalisation
+      function normalise (tensor) {
+        const max = tensor.max();
+        const min = tensor.min();
+        const normalisedTensor = tensor.sub(min).div(max.sub(min));
+        return { tensor: normalisedTensor, min, max };
+      }
+
+      function denormalise (tensor, min, max) {
+        return tensor.mul(max.sub(min)).add(min);
+      }
+
+      function createModel () {
+        const model = tf.sequential();
+
+        model.add(tf.layers.dense({
+          inputDim: 1,
+          units: 1,
+          activation: 'linear',
+          useBias: true,
+        }));
+
+        const optimizer = tf.train.sgd(0.1);
+
+        model.compile({
+          optimizer,
+          loss: 'meanSquaredError'
+        });
+
+        return model;
+      }
+
+      async function run() {
+        tf.tidy(async () => {
+          const houseSalesDataset = tf.data.csv('./kc_house_data.csv');
+          const pointsDataset = houseSalesDataset.map(record => ({ x: record.sqft_living, y: record.price })); 
+          const points = await pointsDataset.toArray();
+          tf.util.shuffle(points);
+          plot(points, 'Square Feet');
+
+          // Extract the feature and store it in a tensor:
+          const featureValues = points.map(p => p.x);
+          const featureTensor = tf.tensor2d(featureValues, [featureValues.length, 1]);
+
+          // Extract the label and store it in a tensor:
+          const labelValues = points.map(p => p.y);
+          const labelTensor = tf.tensor2d(labelValues, [labelValues.length, 1]);
+
+          /**
+          * Extra challenge
+          * The documentation advises against using Dataset.toArray(). We have 
+          * done so to demonstrate manual tensor creation and because this data 
+          * set is reasonably small. How else can you create these Tensors? Try 
+          * doing so with the Dataset.batch(...) and Dataset.forEachAsync(...) 
+          * methods. You will need a good understanding of asyncronous methods in
+          * order to manage this!
+          */
+
+          // Normalise both the features and labels
+          const normalisedFeature = normalise(featureTensor);
+          const normalisedLabel = normalise(labelTensor);
+
+          // Split the dataset
+          const [trainingFeatures, testingFeatures] = tf.split(normalisedFeature.tensor, 2);
+          const [trainingLabels, testingLabels] = tf.split(normalisedLabel.tensor, 2);
+
+          const model = createModel();
+
+          model.summary();
+          tfvis.show.layer({ name: `Layer 1`, tab: `Model Inspection` }, model.getLayer(undefined, 0));
+
+          /**
+           * Add an extra layer to the model and inspect as above. Experiment 
+           * with different numbers of nodes, and see what happens when the bias
+           * is turned off.
+           */
+        });
+      }
+
+      run();
+    </script>
+  </head>
+  <body>
+  </body>
+</html>
